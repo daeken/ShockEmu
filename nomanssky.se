@@ -1,0 +1,24 @@
+w = leftY-
+a = leftX-
+s = leftY+
+d = leftX+
+
+space = X
+e = square
+
+leftMouse = R2
+rightMouse = L1
+
+x = L2
+
+up = dpadUp
+left = dpadLeft
+right = dpadRight
+down = dpadDown
+
+p = PS
+t = touchpad
+
+escape = O
+
+mouseLook = right, linear, 100

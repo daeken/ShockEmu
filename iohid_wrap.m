@@ -10,8 +10,6 @@
 #include <unistd.h>
 #include <dlfcn.h>
 
-#include "keys.h"
-
 typedef struct {
 	uint8_t id, 
 	left_x, left_y, 
@@ -121,11 +119,11 @@ IOReturn IOHIDDeviceSetReport( IOHIDDeviceRef device, IOHIDReportType reportType
 
 	uint64_t ticks;
 
-	bool cross, circle, square, triangle, ps, touchpad, options, share, 
-	l1, l2, l3, r1, r2, r3, up, down, left, right;
-	float left_x, left_y, right_x, right_y; // -1 to 1
+	bool X, O, square, triangle, PS, touchpad, options, share, 
+	L1, L2, L3, R1, R2, R3, dpadUp, dpadDown, dpadLeft, dpadRight;
+	float leftX, leftY, rightX, rightY; // -1 to 1
 
-	bool keys[256];
+	bool keys[256], leftMouse, rightMouse;
 	bool kicked;
 }
 @end
@@ -177,31 +175,36 @@ static HIDRunner *hid;
 
 	memcpy(report, brep, sizeof(brep));
 
+	leftX = leftY = rightX = rightY = 0;
 	[self mapKeys];
 
 	uint8_t dpad = 8;
-	if(left) {
-		if(up)
+	if(dpadLeft) {
+		if(dpadUp)
 			dpad = 7;
-		else if(down)
+		else if(dpadDown)
 			dpad = 5;
 		else
 			dpad = 6;
-	} else if(right) {
-		if(up)
+	} else if(dpadRight) {
+		if(dpadUp)
 			dpad = 1;
-		else if(down)
+		else if(dpadDown)
 			dpad = 3;
 		else
 			dpad = 2;
-	} else if(up)
+	} else if(dpadUp)
 		dpad = 0;
-	else if(down)
+	else if(dpadDown)
 		dpad = 4;
-	prep->buttons1 = (triangle ? (1 << 7) : 0) | (circle ? (1 << 6) : 0) | (cross ? (1 << 5) : 0) | (square ? (1 << 4) : 0) | dpad;
-	prep->buttons3 = ((ticks << 2) & 0xFF) | (touchpad ? 2 : 0) | (ps ? 1 : 0);
-	prep->left_x = 128 + left_x * 127;
-	prep->left_y = 128 + left_y * 127;
+	prep->buttons1 = (triangle ? (1 << 7) : 0) | (O ? (1 << 6) : 0) | (X ? (1 << 5) : 0) | (square ? (1 << 4) : 0) | dpad;
+	prep->buttons2 = (R3 ? (1 << 7) : 0) | (L3 ? (1 << 6) : 0) | (options ? (1 << 5) : 0) | (share ? (1 << 4) : 0) | 
+		(R2 ? (1 << 3) : 0) | (L2 ? (1 << 2) : 0) | (R1 ? (1 << 1) : 0) | (L1 ? (1 << 0) : 0);
+	prep->buttons3 = ((ticks << 2) & 0xFF) | (touchpad ? 2 : 0) | (PS ? 1 : 0);
+	prep->left_trigger = L2 ? 255 : 0;
+	prep->right_trigger = R2 ? 255 : 0;
+	prep->left_x = 128 + leftX * 127;
+	prep->left_y = 128 + leftY * 127;
 	prep->right_x = 128;
 	prep->right_y = 128;
 	callback(context, kIOReturnSuccess, self, kIOHIDReportTypeInput, 1, report, 64);
@@ -221,24 +224,7 @@ static HIDRunner *hid;
 
 #define DOWN(key) keys[key]
 - (void)mapKeys {
-	left = DOWN(KEY_LEFT_ARROW);
-	right = DOWN(KEY_RIGHT_ARROW);
-	up = DOWN(KEY_UP_ARROW);
-	down = DOWN(KEY_DOWN_ARROW);
-
-	cross = DOWN(KEY_SPACE);
-	ps = DOWN(KEY_P);
-	touchpad = DOWN(KEY_T);
-
-	left_x = left_y = 0;
-	if(DOWN(KEY_W))
-		left_y -= 1;
-	if(DOWN(KEY_S))
-		left_y += 1;
-	if(DOWN(KEY_A))
-		left_x -= 1;
-	if(DOWN(KEY_D))
-		left_x += 1;
+#include "mapKeys.h"
 }
 
 - (void)keyDown:(NSEvent *)event {
@@ -257,19 +243,19 @@ static HIDRunner *hid;
 	[hid kick];
 }
 - (void)mouseDown:(NSEvent *)event {
-	hid->l2 = true;
+	hid->leftMouse = true;
 	[hid kick];
 }
 - (void)mouseUp:(NSEvent *)event {
-	hid->l2 = false;
+	hid->leftMouse = false;
 	[hid kick];
 }
 - (void)rightMouseDown:(NSEvent *)event {
-	hid->l1 = true;
+	hid->rightMouse = true;
 	[hid kick];
 }
 - (void)rightMouseUp:(NSEvent *)event {
-	hid->l1 = false;
+	hid->rightMouse = false;
 	[hid kick];
 }
 @end

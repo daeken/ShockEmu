@@ -106,6 +106,8 @@ IOReturn IOHIDDeviceSetReport( IOHIDDeviceRef device, IOHIDReportType reportType
 	return kIOReturnSuccess;
 }
 
+#define MOUSESTEPS 10
+
 @interface HIDRunner:NSObject
 {
 	CFRunLoopRef runLoop;
@@ -124,7 +126,12 @@ IOReturn IOHIDDeviceSetReport( IOHIDDeviceRef device, IOHIDReportType reportType
 	float leftX, leftY, rightX, rightY; // -1 to 1
 
 	bool keys[256], leftMouse, rightMouse;
-	bool kicked;
+	bool kicked, decayKicked;
+
+	bool mouseMoved;
+	NSPoint lastMouse;
+	CFAbsoluteTime lastMouseTime;
+	float mouseAccelX, mouseAccelY, mouseVelX, mouseVelY;
 }
 @end
 
@@ -175,7 +182,6 @@ static HIDRunner *hid;
 
 	memcpy(report, brep, sizeof(brep));
 
-	leftX = leftY = rightX = rightY = 0;
 	[self mapKeys];
 
 	uint8_t dpad = 8;
@@ -203,10 +209,10 @@ static HIDRunner *hid;
 	prep->buttons3 = ((ticks << 2) & 0xFF) | (touchpad ? 2 : 0) | (PS ? 1 : 0);
 	prep->left_trigger = L2 ? 255 : 0;
 	prep->right_trigger = R2 ? 255 : 0;
-	prep->left_x = 128 + leftX * 127;
-	prep->left_y = 128 + leftY * 127;
-	prep->right_x = 128;
-	prep->right_y = 128;
+	prep->left_x = (uint8_t) fmin(fmax(128 + leftX * 127, 0), 255);
+	prep->left_y = (uint8_t) fmin(fmax(128 + leftY * 127, 0), 255);
+	prep->right_x = (uint8_t) fmin(fmax(128 + rightX * 127, 0), 255);
+	prep->right_y = (uint8_t) fmin(fmax(128 + rightY * 127, 0), 255);
 	callback(context, kIOReturnSuccess, self, kIOHIDReportTypeInput, 1, report, 64);
 
 	ticks++;
@@ -221,6 +227,19 @@ static HIDRunner *hid;
 		[self tick];
 	});
 }
+
+- (void)decayKick {
+	if(decayKicked)
+		return;
+	decayKicked = true;
+	CFRunLoopPerformBlock(runLoop, runLoopMode, ^void() {
+		decayKicked = false;
+		[self tick];
+	});
+}
+
+#define JOYDECAY 5
+#define DEADZONE .1
 
 #define DOWN(key) keys[key]
 - (void)mapKeys {
@@ -240,7 +259,23 @@ static HIDRunner *hid;
 
 - (void)mouseMoved:(NSEvent *)event {
 	NSLog(@"mouseMoved");
+
+	NSPoint mouse = [event locationInWindow];
+	CFAbsoluteTime curtime = CFAbsoluteTimeGetCurrent();
+	float velX = (mouse.x - hid->lastMouse.x) / (curtime - hid->lastMouseTime);
+	float velY = (mouse.y - hid->lastMouse.y) / (curtime - hid->lastMouseTime);
+	hid->mouseAccelX = (velX - hid->mouseVelX) / (curtime - hid->lastMouseTime);
+	hid->mouseAccelY = (velY - hid->mouseVelY) / (curtime - hid->lastMouseTime);
+	NSLog(@"vel %f %f", velX, velY);
+	NSLog(@"accel %f %f", hid->mouseAccelX, hid->mouseAccelY);
+	hid->mouseVelX = velX;
+	hid->mouseVelY = velY;
+	hid->lastMouseTime = curtime;
+	hid->lastMouse = mouse;
+	hid->mouseMoved = true;
+
 	[hid kick];
+	[hid decayKick];
 }
 - (void)mouseDown:(NSEvent *)event {
 	hid->leftMouse = true;
